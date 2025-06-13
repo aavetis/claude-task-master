@@ -24,7 +24,8 @@ import {
 	getAzureBaseURL,
 	getBedrockBaseURL,
 	getVertexProjectId,
-	getVertexLocation
+	getVertexLocation,
+	getServerSamplingFlag
 } from './config-manager.js';
 import { log, findProjectRoot, resolveEnvVariable } from './utils.js';
 
@@ -39,7 +40,8 @@ import {
 	OllamaAIProvider,
 	BedrockAIProvider,
 	AzureProvider,
-	VertexAIProvider
+	VertexAIProvider,
+	MCPProvider
 } from '../../src/ai-providers/index.js';
 
 // Create provider instances
@@ -53,7 +55,8 @@ const PROVIDERS = {
 	ollama: new OllamaAIProvider(),
 	bedrock: new BedrockAIProvider(),
 	azure: new AzureProvider(),
-	vertex: new VertexAIProvider()
+	vertex: new VertexAIProvider(),
+	mcp: new MCPProvider()
 };
 
 // Helper function to get cost for a specific model
@@ -306,6 +309,7 @@ async function _unifiedServiceRunner(serviceType, params) {
 
 	const effectiveProjectRoot = projectRoot || findProjectRoot();
 	const userId = getUserId(effectiveProjectRoot);
+	const serverSamplingEnabled = getServerSamplingFlag(effectiveProjectRoot);
 
 	let sequence;
 	if (initialRole === 'main') {
@@ -371,8 +375,14 @@ async function _unifiedServiceRunner(serviceType, params) {
 				continue;
 			}
 
+			const useSampling =
+				serverSamplingEnabled || providerName?.toLowerCase() === 'mcp';
+			const loggedProviderName = useSampling ? 'mcp' : providerName;
+
 			// Get provider instance
-			provider = PROVIDERS[providerName?.toLowerCase()];
+			provider = useSampling
+				? PROVIDERS['mcp']
+				: PROVIDERS[providerName?.toLowerCase()];
 			if (!provider) {
 				log(
 					'warn',
@@ -385,7 +395,7 @@ async function _unifiedServiceRunner(serviceType, params) {
 			}
 
 			// Check API key if needed
-			if (providerName?.toLowerCase() !== 'ollama') {
+			if (!useSampling && providerName?.toLowerCase() !== 'ollama') {
 				if (!isApiKeySet(providerName, session, effectiveProjectRoot)) {
 					log(
 						'warn',
@@ -419,11 +429,13 @@ async function _unifiedServiceRunner(serviceType, params) {
 
 			// Get AI parameters for the current role
 			roleParams = getParametersForRole(currentRole, effectiveProjectRoot);
-			apiKey = _resolveApiKey(
-				providerName?.toLowerCase(),
-				session,
-				effectiveProjectRoot
-			);
+			if (!useSampling) {
+				apiKey = _resolveApiKey(
+					providerName?.toLowerCase(),
+					session,
+					effectiveProjectRoot
+				);
+			}
 
 			// Prepare provider-specific configuration
 			let providerSpecificParams = {};
@@ -498,14 +510,14 @@ async function _unifiedServiceRunner(serviceType, params) {
 			}
 
 			const callParams = {
-				apiKey,
 				modelId,
 				maxTokens: roleParams.maxTokens,
 				temperature: roleParams.temperature,
 				messages,
-				...(baseURL && { baseURL }),
+				...(baseURL && !useSampling && { baseURL }),
 				...(serviceType === 'generateObject' && { schema, objectName }),
 				...providerSpecificParams,
+				...(useSampling ? { session, systemPrompt } : { apiKey }),
 				...restApiParams
 			};
 
@@ -513,7 +525,7 @@ async function _unifiedServiceRunner(serviceType, params) {
 				provider,
 				serviceType,
 				callParams,
-				providerName,
+				loggedProviderName,
 				modelId,
 				currentRole
 			);
@@ -523,7 +535,7 @@ async function _unifiedServiceRunner(serviceType, params) {
 					telemetryData = await logAiUsage({
 						userId,
 						commandName,
-						providerName,
+						providerName: loggedProviderName,
 						modelId,
 						inputTokens: providerResponse.usage.inputTokens,
 						outputTokens: providerResponse.usage.outputTokens,
@@ -536,7 +548,7 @@ async function _unifiedServiceRunner(serviceType, params) {
 			} else if (userId && providerResponse && !providerResponse.usage) {
 				log(
 					'warn',
-					`Cannot log telemetry for ${commandName} (${providerName}/${modelId}): AI result missing 'usage' data. (May be expected for streams)`
+					`Cannot log telemetry for ${commandName} (${loggedProviderName}/${modelId}): AI result missing 'usage' data. (May be expected for streams)`
 				);
 			}
 

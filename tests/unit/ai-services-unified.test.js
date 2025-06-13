@@ -11,6 +11,7 @@ const mockGetParametersForRole = jest.fn();
 const mockGetUserId = jest.fn();
 const mockGetDebugFlag = jest.fn();
 const mockIsApiKeySet = jest.fn();
+const mockGetServerSamplingFlag = jest.fn();
 
 // --- Mock MODEL_MAP Data ---
 // Provide a simplified structure sufficient for cost calculation tests
@@ -108,6 +109,7 @@ jest.unstable_mockModule('../../scripts/modules/config-manager.js', () => ({
 	getDefaultSubtasks: mockGetDefaultSubtasks,
 	getDefaultPriority: mockGetDefaultPriority,
 	getProjectName: mockGetProjectName,
+	getServerSamplingFlag: mockGetServerSamplingFlag,
 
 	// API Key and provider functions
 	isApiKeySet: mockIsApiKeySet,
@@ -145,6 +147,12 @@ const mockOllamaProvider = {
 	generateObject: jest.fn()
 };
 
+const mockMCPProvider = {
+	generateText: jest.fn(),
+	streamText: jest.fn(),
+	generateObject: jest.fn()
+};
+
 // Mock the provider classes to return our mock instances
 jest.unstable_mockModule('../../src/ai-providers/index.js', () => ({
 	AnthropicAIProvider: jest.fn(() => mockAnthropicProvider),
@@ -166,6 +174,7 @@ jest.unstable_mockModule('../../src/ai-providers/index.js', () => ({
 		generateObject: jest.fn()
 	})),
 	OllamaAIProvider: jest.fn(() => mockOllamaProvider),
+	MCPProvider: jest.fn(() => mockMCPProvider),
 	BedrockAIProvider: jest.fn(() => ({
 		generateText: jest.fn(),
 		streamText: jest.fn(),
@@ -686,6 +695,21 @@ describe('Unified AI Services', () => {
 
 			// Should have gotten the anthropic response
 			expect(result.mainResult).toBe('Anthropic response with session key');
+		});
+
+		test('should use MCP provider when server sampling enabled', async () => {
+			mockGetServerSamplingFlag.mockReturnValue(true);
+			mockMCPProvider.generateText.mockResolvedValue({ text: 'sampled' });
+
+			const session = { requestSampling: jest.fn() };
+			const params = { role: 'main', prompt: 'sample', session };
+
+			const result = await generateTextService(params);
+
+			expect(mockMCPProvider.generateText).toHaveBeenCalledTimes(1);
+			const callArgs = mockMCPProvider.generateText.mock.calls[0][0];
+			expect(callArgs.session).toBe(session);
+			expect(result.mainResult).toBe('sampled');
 		});
 	});
 });

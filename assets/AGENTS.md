@@ -102,6 +102,8 @@ Task Master provides an MCP server that Claude Code can connect to. Configure in
 }
 ```
 
+Enable VS Code server sampling by setting `"experimentalServerSampling": true` in `.taskmaster/config.json` and toggling VS Code's `"chat.mcp.serverSampling"` setting.
+
 ### Essential MCP Tools
 
 ```javascript
