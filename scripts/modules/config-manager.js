@@ -62,7 +62,8 @@ const DEFAULTS = {
 		defaultPriority: 'medium',
 		projectName: 'Task Master',
 		ollamaBaseURL: 'http://localhost:11434/api',
-		bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com'
+		bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com',
+		experimentalServerSampling: false
 	}
 };
 
@@ -388,6 +389,10 @@ function getBedrockBaseURL(explicitRoot = null) {
 	return getGlobalConfig(explicitRoot).bedrockBaseURL;
 }
 
+function getServerSamplingFlag(explicitRoot = null) {
+	return getGlobalConfig(explicitRoot).experimentalServerSampling === true;
+}
+
 /**
  * Gets the Google Cloud project ID for Vertex AI from configuration
  * @param {string|null} explicitRoot - Optional explicit path to the project root.
@@ -480,7 +485,10 @@ function getParametersForRole(role, explicitRoot = null) {
  */
 function isApiKeySet(providerName, session = null, projectRoot = null) {
 	// Define the expected environment variable name for each provider
-	if (providerName?.toLowerCase() === 'ollama') {
+	if (
+		providerName?.toLowerCase() === 'ollama' ||
+		providerName?.toLowerCase() === 'mcp'
+	) {
 		return true; // Indicate key status is effectively "OK"
 	}
 
@@ -786,6 +794,7 @@ export {
 	getOllamaBaseURL,
 	getAzureBaseURL,
 	getBedrockBaseURL,
+	getServerSamplingFlag,
 	getParametersForRole,
 	getUserId,
 	// API Key Checkers (still relevant)
